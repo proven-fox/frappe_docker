@@ -47,6 +47,8 @@ services:
       - mariadb-network
 
 networks:
+  proxy-network:
+    external: true
   # traefik-public:
 #    external: true
   mariadb-network:
