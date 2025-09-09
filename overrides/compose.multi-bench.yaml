@@ -3,6 +3,8 @@ services:
     networks:
       # - traefik-public
       - bench-network
+      # ye-system
+      - proxy-network
   #   labels:
   #     - traefik.enable=true
   #     - traefik.docker.network=traefik-public
