@@ -10,7 +10,7 @@ services:
   #     - traefik.http.routers.${ROUTER}-http.service=${ROUTER}
   #     - traefik.http.routers.${ROUTER}-http.entrypoints=http
   #     - traefik.http.routers.${ROUTER}-http.rule=Host(${SITES?SITES not set})
-  # configurator:
+  configurator:
     networks:
       - bench-network
       - mariadb-network
