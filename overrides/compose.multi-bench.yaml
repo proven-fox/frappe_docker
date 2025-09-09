@@ -45,8 +45,8 @@ services:
       - mariadb-network
 
 networks:
-  traefik-public:
-    external: true
+  # traefik-public:
+#    external: true
   mariadb-network:
     external: true
   bench-network:
