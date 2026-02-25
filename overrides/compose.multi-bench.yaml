@@ -1,17 +1,15 @@
 services:
   frontend:
     networks:
-      # - traefik-public
+      - traefik-public
       - bench-network
-      # ye-system
-      - proxy-network
-  #   labels:
-  #     - traefik.enable=true
-  #     - traefik.docker.network=traefik-public
-  #     - traefik.http.services.${ROUTER?ROUTER not set}.loadbalancer.server.port=8080
-  #     - traefik.http.routers.${ROUTER}-http.service=${ROUTER}
-  #     - traefik.http.routers.${ROUTER}-http.entrypoints=http
-  #     - traefik.http.routers.${ROUTER}-http.rule=Host(${SITES?SITES not set})
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.services.${ROUTER?ROUTER not set}.loadbalancer.server.port=8080
+      - traefik.http.routers.${ROUTER}-http.service=${ROUTER}
+      - traefik.http.routers.${ROUTER}-http.entrypoints=http
+      - traefik.http.routers.${ROUTER}-http.rule=${SITES_RULE?SITES_RULE not set}
   configurator:
     networks:
       - bench-network
