@@ -6,10 +6,17 @@ variable "REGISTRY_USER" {
 }
 
 variable PYTHON_VERSION {
-    default = "3.11.6"
+    default = "3.14"
 }
 variable NODE_VERSION {
-    default = "20.19.2"
+    default = "24"
+}
+variable DEBIAN_BASE {
+    default = "trixie"
+}
+
+variable "INSTALL_WKHTMLTOPDF" {
+    default = "true"
 }
 
 variable "FRAPPE_VERSION" {
@@ -41,6 +48,12 @@ variable "LATEST_BENCH_RELEASE" {
 target "bench" {
     args = {
         GIT_REPO = "${BENCH_REPO}"
+        DEBIAN_BASE = "${DEBIAN_BASE}"
+        INSTALL_WKHTMLTOPDF = "${INSTALL_WKHTMLTOPDF}"
+    }
+    labels = {
+        "org.opencontainers.image.source" = "https://github.com/frappe/frappe_docker"
+        "org.opencontainers.image.url" = "https://github.com/frappe/frappe_docker"
     }
     context = "images/bench"
     target = "bench"
@@ -60,6 +73,10 @@ target "bench-test" {
 
 group "default" {
     targets = ["erpnext", "base", "build"]
+}
+
+group "base-images" {
+    targets = ["base", "build"]
 }
 
 function "tag" {
@@ -85,6 +102,12 @@ target "default-args" {
         ERPNEXT_BRANCH = "${ERPNEXT_VERSION}"
         PYTHON_VERSION = "${PYTHON_VERSION}"
         NODE_VERSION = "${NODE_VERSION}"
+        DEBIAN_BASE = "${DEBIAN_BASE}"
+        INSTALL_WKHTMLTOPDF = "${INSTALL_WKHTMLTOPDF}"
+    }
+    labels = {
+        "org.opencontainers.image.source" = "https://github.com/frappe/frappe_docker"
+        "org.opencontainers.image.url" = "https://github.com/frappe/frappe_docker"
     }
 }
 

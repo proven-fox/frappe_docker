@@ -1,13 +1,19 @@
-FROM debian:bookworm-slim AS bench
+ARG DEBIAN_BASE=trixie
+FROM debian:${DEBIAN_BASE}-slim AS bench
 
 LABEL author=frappé
 
 ARG GIT_REPO=https://github.com/frappe/bench.git
 ARG GIT_BRANCH=v5.x
+ARG INSTALL_CHROMIUM=true
+ARG INSTALL_WKHTMLTOPDF=true
+ARG WKHTMLTOPDF_VERSION=0.12.6.1-3
+ARG WKHTMLTOPDF_DISTRO=bookworm
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
     # For frappe framework
+    ca-certificates \
     git \
     mariadb-client \
     postgresql-client \
@@ -23,8 +29,6 @@ RUN apt-get update \
     libharfbuzz0b \
     libpangoft2-1.0-0 \
     libpangocairo-1.0-0 \
-    #Chromium
-    chromium-headless-shell \
     # to work inside the container
     locales \
     build-essential \
@@ -37,7 +41,6 @@ RUN apt-get update \
     tree \
     nano \
     less \
-    software-properties-common \
     bash-completion \
     # For psycopg2
     libpq-dev \
@@ -47,7 +50,7 @@ RUN apt-get update \
     libldap2-dev \
     libmariadb-dev \
     libsasl2-dev \
-    libtiff5-dev \
+    libtiff-dev \
     libwebp-dev \
     pkg-config \
     redis-tools \
@@ -75,20 +78,28 @@ RUN apt-get update \
     file \
     # For MIME type detection
     media-types \
+    && . /etc/os-release \
+    && if [ "$VERSION_CODENAME" = "trixie" ]; then \
+        apt-get install --no-install-recommends -y tzdata-legacy; \
+    fi \
+    # Install wkhtmltopdf with patched qt
+    && if [ "$INSTALL_WKHTMLTOPDF" != "false" ]; then \
+        if [ "$(uname -m)" = "aarch64" ]; then export ARCH=arm64; fi \
+        && if [ "$(uname -m)" = "x86_64" ]; then export ARCH=amd64; fi \
+        && downloaded_file=wkhtmltox_${WKHTMLTOPDF_VERSION}.${WKHTMLTOPDF_DISTRO}_${ARCH}.deb \
+        && curl -fsSLO https://github.com/wkhtmltopdf/packaging/releases/download/$WKHTMLTOPDF_VERSION/$downloaded_file \
+        && apt-get install --no-install-recommends -y "./$downloaded_file" \
+        && rm "$downloaded_file"; \
+    fi \
+    # Chromium
+    && if [ "$INSTALL_CHROMIUM" != "false" ]; then \
+        DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+        chromium-headless-shell; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
 
 RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
     && dpkg-reconfigure --frontend=noninteractive locales
-
-# Detect arch and install wkhtmltopdf
-ARG WKHTMLTOPDF_VERSION=0.12.6.1-3
-ARG WKHTMLTOPDF_DISTRO=bookworm
-RUN if [ "$(uname -m)" = "aarch64" ]; then export ARCH=arm64; fi \
-    && if [ "$(uname -m)" = "x86_64" ]; then export ARCH=amd64; fi \
-    && downloaded_file=wkhtmltox_${WKHTMLTOPDF_VERSION}.${WKHTMLTOPDF_DISTRO}_${ARCH}.deb \
-    && wget -q https://github.com/wkhtmltopdf/packaging/releases/download/$WKHTMLTOPDF_VERSION/$downloaded_file \
-    && dpkg -i $downloaded_file \
-    && rm $downloaded_file
 
 # Create new user with home directory, improve docker compatibility with UID/GID 1000,
 # add user to sudo group, allow passwordless sudo, switch to that user
@@ -101,8 +112,8 @@ USER frappe
 WORKDIR /home/frappe
 
 # Install Python via pyenv
-ENV PYTHON_VERSION_PREV=3.12.12
-ENV PYTHON_VERSION=3.14.2
+ENV PYTHON_VERSION_PREV=3.12
+ENV PYTHON_VERSION=3.14
 ENV PYENV_ROOT=/home/frappe/.pyenv
 ENV PATH=$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
 
@@ -128,20 +139,21 @@ RUN git clone ${GIT_REPO} --depth 1 -b ${GIT_BRANCH} .bench \
     && echo "export BENCH_DEVELOPER=1" >>/home/frappe/.bashrc
 
 # Install Node via nvm
-ENV NODE_VERSION_PREV=22.22.0
-ENV NODE_VERSION=24.13.0
+ENV NODE_VERSION_PREV=22
+ENV NODE_VERSION=24
 ENV NVM_DIR=/home/frappe/.nvm
-ENV PATH=${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}
+ENV NVM_SYMLINK_CURRENT=true
+ENV PATH=${NVM_DIR}/current/bin/:${PATH}
 
-RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash \
+RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.6/install.sh | bash \
     && . ${NVM_DIR}/nvm.sh \
     && nvm install ${NODE_VERSION_PREV} \
-    && nvm use v${NODE_VERSION_PREV} \
+    && nvm use ${NODE_VERSION_PREV} \
     && npm install -g yarn \
     && nvm install ${NODE_VERSION} \
-    && nvm use v${NODE_VERSION} \
+    && nvm use ${NODE_VERSION} \
     && npm install -g yarn \
-    && nvm alias default v${NODE_VERSION} \
+    && nvm alias default ${NODE_VERSION} \
     && rm -rf ${NVM_DIR}/.cache \
     && echo 'export NVM_DIR="/home/frappe/.nvm"' >>~/.bashrc \
     && echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc \

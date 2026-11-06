@@ -1,3 +1,7 @@
+---
+title: Getting Started
+---
+
 # Getting Started
 
 ## Prerequisites
@@ -97,6 +101,26 @@ PYENV_VERSION=3.9.17 bench init --skip-redis-config-generation --frappe-branch v
 cd frappe-bench
 ```
 
+At this point the the directory structure will be very close to this, if not exact,
+
+```
+development/
+├── frappe-bench/           # Your actual Frappe installation
+│   ├── apps/              # All installed Frappe applications
+│   │   ├── frappe/        # Core framework (don't modify directly)
+│   │   ├── erpnext/       # ERPNext application (if installed)
+│   │   └── my_custom_app/ # Your custom apps (edit freely)
+│   ├── sites/             # Multi-tenant sites
+│   │   ├── development.localhost/     # Default dev site
+│   │   │   ├── site_config.json      # Site-specific config
+│   │   │   └── private/files/        # Uploaded files
+│   │   └── common_site_config.json   # Shared configuration
+│   ├── env/               # Python virtual environment
+│   ├── logs/              # Application logs
+│   └── config/            # Bench-level configuration
+└── .vscode/               # VSCode workspace settings
+```
+
 ### Setup hosts
 
 We need to tell bench to use the right containers instead of localhost. Run the following commands inside the container:
@@ -118,6 +142,19 @@ For any reason the above commands fail, set the values in `common_site_config.js
   "redis_socketio": "redis://redis-queue:6379"
 }
 ```
+
+### Configure Chromium for PDF generation
+
+For Frappe v16 and later, configure the bench to use Chromium included in the
+bench image. Run this from the bench directory, including for existing benches:
+
+```shell
+bench set-config -g chromium_path /usr/lib/chromium/chromium-headless-shell
+```
+
+Without this setting, Frappe downloads a separate browser that may fail to start
+because of missing system libraries. The `development/installer.py` script sets
+this automatically for new benches.
 
 ### Edit Honcho's Procfile
 
@@ -354,7 +391,7 @@ The first command can take a few seconds to be executed, this is to be expected.
 
 ## Manually start containers
 
-In case you don't use VSCode, you may start the containers manually with the following command:
+The example configuration forwards development ports through VS Code and does not publish them through Docker. If you don't use VS Code, first follow the [CLI-only port configuration](04-alternate-setup.md#configure-ports-for-cli-only-use), then start the containers manually:
 
 ### Running the containers
 

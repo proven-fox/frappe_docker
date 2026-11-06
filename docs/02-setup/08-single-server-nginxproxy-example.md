@@ -1,3 +1,7 @@
+---
+title: Single Server Example
+---
+
 # Single Server Example (nginx-proxy + acme-companion)
 
 This guide demonstrates a single-server setup using nginx-proxy and acme-companion for HTTPS. It is best for a small number of hostnames and a single bench. If you need multiple benches or advanced routing, use the Traefik-based example instead.
@@ -11,7 +15,7 @@ We will setup the following:
 
 ## Requirements
 
-- A server that can run Docker (recommended: 2 vCPU, 4 GB RAM, 50 GB SSD).
+- A server that can run Docker Engine **v23.0+** (recommended: 2 vCPU, 4 GB RAM, 50 GB SSD).
 - A public domain with DNS control.
 - Two subdomains pointing to your server IP (A/AAAA records):
   - `erp.your-domain.com`
@@ -80,23 +84,15 @@ cat > ~/gitops/apps.json <<'EOF'
 EOF
 ```
 
-Generate the BASE64 value and build:
+Use a [compatible builder](02-build-setup.md#builder-compatibility) and pass `apps.json` as a [BuildKit secret](https://docs.docker.com/build/building/secrets/) to keep private repository tokens out of image metadata:
 
 ```shell
-export APPS_JSON_BASE64=$(base64 -w 0 ~/gitops/apps.json)
-
 docker build \
   --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
   --build-arg=FRAPPE_BRANCH=version-16 \
-  --build-arg=APPS_JSON_BASE64=$APPS_JSON_BASE64 \
+  --secret=id=apps_json,src=$HOME/gitops/apps.json \
   --tag=my-erpnext-prod-image:16.0.0 \
   --file=images/layered/Containerfile .
-```
-
-If `base64 -w 0` is not available on your system, use:
-
-```shell
-export APPS_JSON_BASE64=$(base64 ~/gitops/apps.json | tr -d '\n')
 ```
 
 ### Configure environment
@@ -153,7 +149,7 @@ docker compose --project-name erpnext exec backend \
 
 # crm.your-domain.com
 docker compose --project-name erpnext exec backend \
-  bench new-site --mariadb-user-host-login-scope=% --db-root-password changeit --install-app erpnext --admin-password changeit crm.your-domain.com
+  bench new-site --mariadb-user-host-login-scope=% --db-root-password changeit --install-app crm --admin-password changeit crm.your-domain.com
 ```
 
 ### Notes

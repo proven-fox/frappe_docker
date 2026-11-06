@@ -72,8 +72,8 @@ def get_args_parser():
         "--frappe-branch",
         action="store",
         type=str,
-        help="frappe repo to use, default: version-15",  # noqa: E501
-        default="version-15",
+        help="frappe repo to use, default: version-16",  # noqa: E501
+        default="version-16",
     )
     parser.add_argument(
         "-p",
@@ -185,6 +185,17 @@ def init_bench_if_not_exist(args):
                 "-g",
                 "redis_socketio",
                 "redis://redis-queue:6379",
+            ],
+            cwd=os.getcwd() + "/" + args.bench_name,
+        )
+        cprint("Set chromium_path to the system Chromium", level=3)
+        subprocess.call(
+            [
+                "bench",
+                "set-config",
+                "-g",
+                "chromium_path",
+                "/usr/lib/chromium/chromium-headless-shell",
             ],
             cwd=os.getcwd() + "/" + args.bench_name,
         )

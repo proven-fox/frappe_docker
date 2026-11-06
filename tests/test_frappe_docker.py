@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from tests.conftest import S3ServiceResult
-from tests.utils import Compose, check_url_content
+from tests.utils import Compose, check_url_content, wait_for_url
 
 BACKEND_SERVICES = (
     "backend",
@@ -13,6 +13,18 @@ BACKEND_SERVICES = (
     "queue-long",
     "scheduler",
 )
+
+
+def test_wkhtmltopdf_installation(compose: Compose, python_path: str):
+    expected = os.getenv("INSTALL_WKHTMLTOPDF", "true") != "false"
+    compose.exec(
+        "backend",
+        python_path,
+        "-c",
+        f"import shutil; assert bool(shutil.which('wkhtmltopdf')) == {expected}",
+    )
+    if expected:
+        compose.exec("backend", "wkhtmltopdf", "--version")
 
 
 @pytest.mark.parametrize("service", BACKEND_SERVICES)
@@ -81,6 +93,30 @@ def test_files_reachable(frappe_site: str, tmp_path: Path, compose: Compose):
     )
 
 
+def test_files_html_security_headers(
+    frappe_site: str, tmp_path: Path, compose: Compose
+):
+    file_path = tmp_path / "testfile.html"
+    file_path.write_text(
+        "<html><body>This is a Frappe Docker test html file</body></html>"
+    )
+
+    compose(
+        "cp",
+        str(file_path),
+        f"backend:/home/frappe/frappe-bench/sites/{frappe_site}/public/files/",
+    )
+
+    response = wait_for_url(
+        url=f"http://127.0.0.1/files/{file_path.name}",
+        site_name=frappe_site,
+    )
+
+    assert response.headers["Content-Disposition"] == "attachment"
+    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+
+
 @pytest.mark.parametrize("service", BACKEND_SERVICES)
 @pytest.mark.usefixtures("frappe_site")
 def test_frappe_connections_in_backends(
@@ -105,7 +141,7 @@ def test_push_backup(
     restic_password = "secret"
     compose.bench("--site", frappe_site, "backup", "--with-files")
     restic_args = [
-        "--env=RESTIC_REPOSITORY=s3:http://minio:9000/frappe",
+        f"--env=RESTIC_REPOSITORY=s3:{s3_service.endpoint_url}/{s3_service.bucket}",
         f"--env=AWS_ACCESS_KEY_ID={s3_service.access_key}",
         f"--env=AWS_SECRET_ACCESS_KEY={s3_service.secret_key}",
         f"--env=RESTIC_PASSWORD={restic_password}",
@@ -113,6 +149,7 @@ def test_push_backup(
     compose.exec(*restic_args, "backend", "restic", "init")
     compose.exec(*restic_args, "backend", "restic", "backup", "sites")
     compose.exec(*restic_args, "backend", "restic", "snapshots")
+    compose.exec(*restic_args, "backend", "restic", "check", "--read-data")
 
 
 def test_https(frappe_site: str, compose: Compose):
@@ -149,3 +186,65 @@ class TestPostgres:
             "--admin-password",
             "admin",
         )
+
+
+def test_arbitrary_uid_execution(compose: Compose):
+    """Verify backend and frontend containers start and run under arbitrary UID with GID 0 (OpenShift restricted-v2).
+
+    Executes the entrypoints directly to verify:
+    - Container startup with arbitrary non-root UID (1000680000) and GID 0
+    - Effective runtime umask (0002)
+    - Writability of runtime paths, the bench root, and installed app directories/files
+    - Frontend nginx configuration test under arbitrary UID
+    """
+    check_script = (
+        "import os\n"
+        "import tempfile\n"
+        "uid = os.getuid()\n"
+        "gid = os.getgid()\n"
+        "assert uid == 1000680000, f'Expected UID 1000680000, got {uid}'\n"
+        "assert gid == 0, f'Expected GID 0, got {gid}'\n"
+        "with open('/etc/passwd') as f:\n"
+        "    frappe_lines = [line for line in f if line.startswith('frappe:')]\n"
+        "assert len(frappe_lines) == 1, f'Expected exactly 1 frappe user, found {len(frappe_lines)}'\n"
+        "assert not os.access('/etc/passwd', os.W_OK), '/etc/passwd must not be writable'\n"
+        "old_umask = os.umask(0)\n"
+        "os.umask(old_umask)\n"
+        "assert old_umask == 0o002, f'Expected umask 0002, got {oct(old_umask)}'\n"
+        "bench_path = '/home/frappe/frappe-bench'\n"
+        "for directory in ('/tmp', '/home/frappe', bench_path, f'{bench_path}/sites'):\n"
+        "    with tempfile.NamedTemporaryFile(dir=directory) as f:\n"
+        "        f.write(b'ok')\n"
+        "for app in ('frappe', 'erpnext'):\n"
+        "    app_path = f'{bench_path}/apps/{app}'\n"
+        "    if not os.path.isdir(app_path):\n"
+        "        continue\n"
+        "    with tempfile.NamedTemporaryFile(dir=app_path) as f:\n"
+        "        f.write(b'ok')\n"
+        "    with open(f'{app_path}/{app}/__init__.py', 'r+b'):\n"
+        "        pass\n"
+        "print(f'VERIFIED:{uid}:{gid}')\n"
+    )
+
+    compose(
+        "run",
+        "--rm",
+        "--no-deps",
+        "--user",
+        "1000680000:0",
+        "backend",
+        "/home/frappe/frappe-bench/env/bin/python",
+        "-c",
+        check_script,
+    )
+
+    compose(
+        "run",
+        "--rm",
+        "--no-deps",
+        "--user",
+        "1000680000:0",
+        "frontend",
+        "nginx",
+        "-t",
+    )
